@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { loginPath } from "@/services/auth";
 import { auth, db } from "../../../../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, updateDoc, Timestamp, deleteField } from "firebase/firestore";
@@ -63,7 +64,7 @@ export default function ApplicationDetail() {
           router.push("/");
         }
       } else {
-        router.push("/login");
+        router.replace(loginPath());
       }
     });
     return () => unsub();

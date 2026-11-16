@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { auth } from "../../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
+import { loginPath } from "@/services/auth";
 import { getAllForms } from "../../../services/forms";
 import { db } from "../../../lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
@@ -33,7 +34,7 @@ export default function loadAllFormsPage(){
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, async (currentUser) => {
             if (!currentUser) {
-                router.replace("/login");
+                router.replace(loginPath());
                 return;
             }
 

@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, Fragment } from "react";
 import { auth } from "../../../../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
+import { loginPath } from "@/services/auth";
 import { doc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../../../../../lib/firebase";
 import { useParams } from "next/navigation";
@@ -136,7 +137,7 @@ export default function FormAdminBuilder() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
-        router.replace("/login");
+        router.replace(loginPath());
         setLoading(false);
         return;
       }

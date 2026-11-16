@@ -3,6 +3,7 @@ import "./globals.css";
 import Image from "next/image";
 import Link from "next/link";
 import Header from "@/components/Header";
+import AccountSync from "@/components/AccountSync";
 import { Analytics } from "@vercel/analytics/next";
 
 const montserrat = Montserrat({
@@ -42,6 +43,7 @@ export default function RootLayout({ children }) {
 			<body
 				className={`${montserrat.variable} ${geistSans.variable} ${geistMono.variable} ${cinzel.variable} ${"cinzel-decorative".variable} antialiased`}
 			>
+				<AccountSync />
 				{children}
 				<Analytics />
 			</body>
