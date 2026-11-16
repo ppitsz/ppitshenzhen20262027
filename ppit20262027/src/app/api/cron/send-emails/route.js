@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { processScheduledEmails } from '@/services/email';
 
+export const maxDuration = 300;
+
 export async function GET(request) {
     try {
         // Verify cron secret
