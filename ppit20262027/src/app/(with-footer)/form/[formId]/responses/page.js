@@ -7,6 +7,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { useRouter, useParams } from "next/navigation"
 import { ChevronLeft, ChevronRight, List, LayoutGrid, ListChecks, Calendar, Clock, Ticket } from "lucide-react";
 import { isAnswerable } from "../../../../../lib/forms/pages";
+import { loginPath } from "@/services/auth";
 
 async function ticketApi(path, { method = "GET", body } = {}) {
     await auth.authStateReady();
@@ -63,7 +64,7 @@ export default function ResponsesPage() {
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, async (u) => {
             if (!u) {
-                router.push("/login");
+                router.replace(loginPath());
                 return;
             }
 

@@ -4,6 +4,7 @@ import { auth, db } from "../../../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { collection, getDocs, doc, updateDoc, getDoc, writeBatch } from "firebase/firestore";
 import { useRouter } from "next/navigation";
+import { loginPath } from "@/services/auth";
 import Link from "next/link";
 
 const DIVISIONS = [
@@ -127,7 +128,7 @@ export default function AdminApplications() {
           router.push("/");
         }
       } else {
-        router.push("/login");
+        router.replace(loginPath());
       }
     });
     return () => unsub();

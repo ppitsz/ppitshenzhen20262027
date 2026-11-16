@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { auth } from "../../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter, usePathname } from "next/navigation";
+import { loginPath } from "@/services/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../../lib/firebase";
 import Link from "next/link";
@@ -17,7 +18,7 @@ export default function ControlPanelLayout({ children }) {
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (!currentUser) {
-                router.replace("/login");
+                router.replace(loginPath());
                 return;
             }
 
