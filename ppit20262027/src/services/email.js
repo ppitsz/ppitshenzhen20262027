@@ -1,24 +1,28 @@
-import { db } from '@/lib/firebase';
-import {
-    collection,
-    addDoc,
-    getDocs,
-    query,
-    where,
-    orderBy,
-    limit,
-    startAfter,
-    doc,
-    updateDoc,
-    getDoc,
-    serverTimestamp,
-    Timestamp
-} from 'firebase/firestore';
-import { getUserNameByEmail } from './forms';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+// Importing it also starts the Admin SDK with this site's service account.
+import { adminDb } from '@/lib/tickets/server';
+import { deliverEmail } from '@/lib/email/deliver';
+
+/*
+  Server only: the email API routes and crons use this, never the browser.
+  It reads members' emails and birthdays, so it uses the Admin SDK: Firestore's rules
+  don't let anyone read those signed out.
+*/
 
 const EMAIL_SENDS_COLLECTION = 'emailSends';
 const BIRTHDAY_TEMPLATES_COLLECTION = 'birthdayTemplates';
 const USERS_COLLECTION = 'users';
+
+const db = () => adminDb();
+
+// Timestamps go to the browser as { seconds, nanoseconds }, which EmailList reads.
+function plain(data) {
+    const out = { ...data };
+    for (const [key, value] of Object.entries(out)) {
+        if (value instanceof Timestamp) out[key] = { seconds: value.seconds, nanoseconds: value.nanoseconds };
+    }
+    return out;
+}
 
 // ============================================================
 // EMAIL CRUD OPERATIONS
@@ -37,12 +41,12 @@ export async function createEmailSend(emailData) {
             scheduledTime = Timestamp.fromDate(new Date(scheduledTime));
         }
 
-        const docRef = await addDoc(collection(db, EMAIL_SENDS_COLLECTION), {
+        const docRef = await db().collection(EMAIL_SENDS_COLLECTION).add({
             ...emailData,
-            scheduledTime: scheduledTime,
+            scheduledTime: scheduledTime || null,
             status: scheduledTime ? 'scheduled' : 'pending',
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
         });
         return { id: docRef.id, ...emailData };
     } catch (error) {
@@ -51,33 +55,17 @@ export async function createEmailSend(emailData) {
     }
 }
 
+// `lastDoc` is the id of the last email on the previous page.
 export async function getEmailSends(lastDoc = null, limitCount = 10) {
     try {
-        let q = query(
-            collection(db, EMAIL_SENDS_COLLECTION),
-            orderBy('createdAt', 'desc'),
-            limit(limitCount)
-        );
-
+        let q = db().collection(EMAIL_SENDS_COLLECTION).orderBy('createdAt', 'desc');
         if (lastDoc) {
-            q = query(
-                collection(db, EMAIL_SENDS_COLLECTION),
-                orderBy('createdAt', 'desc'),
-                startAfter(lastDoc),
-                limit(limitCount)
-            );
+            const last = await db().collection(EMAIL_SENDS_COLLECTION).doc(lastDoc).get();
+            if (last.exists) q = q.startAfter(last);
         }
-
-        const querySnapshot = await getDocs(q);
-        const emails = [];
-        let lastVisible = null;
-
-        querySnapshot.forEach((doc) => {
-            emails.push({ id: doc.id, ...doc.data() });
-            lastVisible = doc;
-        });
-
-        return { emails, lastVisible };
+        const snapshot = await q.limit(limitCount).get();
+        const emails = snapshot.docs.map((d) => ({ id: d.id, ...plain(d.data()) }));
+        return { emails, lastVisible: snapshot.docs.at(-1)?.id ?? null };
     } catch (error) {
         console.error('Error fetching email sends:', error);
         throw error;
@@ -86,12 +74,11 @@ export async function getEmailSends(lastDoc = null, limitCount = 10) {
 
 export async function updateEmailStatus(emailId, status, error = null) {
     try {
-        const docRef = doc(db, EMAIL_SENDS_COLLECTION, emailId);
-        await updateDoc(docRef, {
+        await db().collection(EMAIL_SENDS_COLLECTION).doc(emailId).update({
             status,
-            sentAt: status === 'sent' ? serverTimestamp() : null,
+            sentAt: status === 'sent' ? FieldValue.serverTimestamp() : null,
             error: error || null,
-            updatedAt: serverTimestamp()
+            updatedAt: FieldValue.serverTimestamp(),
         });
     } catch (error) {
         console.error('Error updating email status:', error);
@@ -101,32 +88,21 @@ export async function updateEmailStatus(emailId, status, error = null) {
 
 export async function getScheduledEmails(currentTime) {
     try {
-        // Convert Date to Timestamp for Firestore query
         const timestamp = Timestamp.fromDate(currentTime);
-
         console.log(`Querying for scheduled emails <= ${timestamp.seconds} (${currentTime.toISOString()})`);
 
-        const q = query(
-            collection(db, EMAIL_SENDS_COLLECTION),
-            where('status', '==', 'scheduled'),
-            where('scheduledTime', '<=', timestamp)
-        );
-        const querySnapshot = await getDocs(q);
+        const snapshot = await db()
+            .collection(EMAIL_SENDS_COLLECTION)
+            .where('status', '==', 'scheduled')
+            .where('scheduledTime', '<=', timestamp)
+            .get();
 
-        console.log(`Found ${querySnapshot.size} scheduled emails due`);
-
-        const emails = [];
-        querySnapshot.forEach((doc) => {
-            const data = doc.data();
+        console.log(`Found ${snapshot.size} scheduled emails due`);
+        return snapshot.docs.map((d) => {
+            const data = d.data();
             const scheduledTime = data.scheduledTime?.toDate?.() || new Date(data.scheduledTime);
-            console.log(`Email: ${data.content?.subject}, scheduled: ${scheduledTime.toISOString()}`);
-            emails.push({
-                id: doc.id,
-                ...data,
-                scheduledTime: scheduledTime // Convert to Date for easier handling
-            });
+            return { id: d.id, ...data, scheduledTime };
         });
-        return emails;
     } catch (error) {
         console.error('Error fetching scheduled emails:', error);
         return [];
@@ -139,39 +115,23 @@ export async function getScheduledEmails(currentTime) {
 
 export async function getAllRecipients(cohort = null) {
     try {
-        const usersRef = collection(db, USERS_COLLECTION);
-        let q;
+        let q = db()
+            .collection(USERS_COLLECTION)
+            .where('status', '==', 'active')
+            .where('graduated', '==', false);
+        if (cohort) q = q.where('cohortYear', '==', parseInt(cohort));
 
-        if (cohort) {
-            q = query(
-                usersRef,
-                where('status', '==', 'active'),
-                where('graduated', '==', false),
-                where('cohortYear', '==', parseInt(cohort))
-            );
-        } else {
-            q = query(
-                usersRef,
-                where('status', '==', 'active'),
-                where('graduated', '==', false)
-            );
-        }
-
-        const querySnapshot = await getDocs(q);
-        const recipients = [];
-
-        querySnapshot.forEach((doc) => {
-            const data = doc.data();
-            recipients.push({
-                id: doc.id,
+        const snapshot = await q.get();
+        return snapshot.docs.map((d) => {
+            const data = d.data();
+            return {
+                id: d.id,
                 email: data.email,
                 name: data.name || data.displayName || '',
                 cohortYear: data.cohortYear || null,
                 birthday: data.birthday || null,
-            });
+            };
         });
-
-        return recipients;
     } catch (error) {
         console.error('Error fetching recipients:', error);
         return [];
@@ -180,26 +140,24 @@ export async function getAllRecipients(cohort = null) {
 
 export async function getBirthdayRecipients() {
     try {
-        const usersRef = collection(db, USERS_COLLECTION);
-        const q = query(
-            usersRef,
-            where('status', '==', 'active'),
-            where('graduated', '==', false)
-        );
+        const snapshot = await db()
+            .collection(USERS_COLLECTION)
+            .where('status', '==', 'active')
+            .where('graduated', '==', false)
+            .get();
 
-        const querySnapshot = await getDocs(q);
         const today = new Date();
         const todayStr = `${today.getMonth() + 1}-${today.getDate()}`;
         const recipients = [];
 
-        querySnapshot.forEach((doc) => {
-            const data = doc.data();
+        snapshot.forEach((d) => {
+            const data = d.data();
             if (data.birthday) {
                 const bday = new Date(data.birthday);
                 const bdayStr = `${bday.getMonth() + 1}-${bday.getDate()}`;
                 if (bdayStr === todayStr) {
                     recipients.push({
-                        id: doc.id,
+                        id: d.id,
                         email: data.email,
                         name: data.name || data.displayName || '',
                         birthday: data.birthday,
@@ -221,16 +179,8 @@ export async function getBirthdayRecipients() {
 
 export async function getBirthdayTemplates() {
     try {
-        const q = query(
-            collection(db, BIRTHDAY_TEMPLATES_COLLECTION),
-            orderBy('createdAt', 'desc')
-        );
-        const querySnapshot = await getDocs(q);
-        const templates = [];
-        querySnapshot.forEach((doc) => {
-            templates.push({ id: doc.id, ...doc.data() });
-        });
-        return templates;
+        const snapshot = await db().collection(BIRTHDAY_TEMPLATES_COLLECTION).orderBy('createdAt', 'desc').get();
+        return snapshot.docs.map((d) => ({ id: d.id, ...plain(d.data()) }));
     } catch (error) {
         console.error('Error fetching birthday templates:', error);
         return [];
@@ -239,17 +189,10 @@ export async function getBirthdayTemplates() {
 
 export async function getActiveBirthdayTemplate() {
     try {
-        const q = query(
-            collection(db, BIRTHDAY_TEMPLATES_COLLECTION),
-            where('isActive', '==', true),
-            limit(1)
-        );
-        const querySnapshot = await getDocs(q);
-        if (!querySnapshot.empty) {
-            const doc = querySnapshot.docs[0];
-            return { id: doc.id, ...doc.data() };
-        }
-        return null;
+        const snapshot = await db().collection(BIRTHDAY_TEMPLATES_COLLECTION).where('isActive', '==', true).limit(1).get();
+        if (snapshot.empty) return null;
+        const d = snapshot.docs[0];
+        return { id: d.id, ...d.data() };
     } catch (error) {
         console.error('Error getting active birthday template:', error);
         return null;
@@ -258,21 +201,23 @@ export async function getActiveBirthdayTemplate() {
 
 export async function saveBirthdayTemplate(templateData) {
     try {
-        let docRef;
-        if (templateData.id) {
-            docRef = doc(db, BIRTHDAY_TEMPLATES_COLLECTION, templateData.id);
-            await updateDoc(docRef, {
-                ...templateData,
-                updatedAt: serverTimestamp(),
+        const { id, ...fields } = templateData;
+        // Timestamps come back from the browser as plain objects: keep the stored ones.
+        delete fields.createdAt;
+        delete fields.updatedAt;
+        if (id) {
+            await db().collection(BIRTHDAY_TEMPLATES_COLLECTION).doc(id).update({
+                ...fields,
+                updatedAt: FieldValue.serverTimestamp(),
             });
-        } else {
-            docRef = await addDoc(collection(db, BIRTHDAY_TEMPLATES_COLLECTION), {
-                ...templateData,
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-            });
+            return { id, ...fields };
         }
-        return { id: docRef.id, ...templateData };
+        const docRef = await db().collection(BIRTHDAY_TEMPLATES_COLLECTION).add({
+            ...fields,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        });
+        return { id: docRef.id, ...fields };
     } catch (error) {
         console.error('Error saving birthday template:', error);
         throw error;
@@ -283,76 +228,24 @@ export async function saveBirthdayTemplate(templateData) {
 // SEND EMAILS (NO PERSONALIZATION FOR BROADCAST)
 // ============================================================
 
-export async function sendEmails(recipients, content, emailId, type = 'broadcast', individually = false, attachmentFiles = [], origin = null) {
+export async function sendEmails(recipients, content, emailId, type = 'broadcast', individually = false, attachmentFiles = []) {
     try {
         await updateEmailStatus(emailId, 'sending');
 
-        const emailData = {
+        const result = await deliverEmail({
             to: recipients,
             subject: content.subject || 'Broadcast Email',
             html: content.html || content.text?.replace(/\n/g, '<br>') || '',
             text: content.text || '',
-            type: type,
-            individually: individually,
-            attachmentFiles: attachmentFiles
-        };
-
-        const apiUrl = `${origin}/api/emails/send`;
-
-        if (individually) {
-            const results = [];
-            for (const recipient of recipients) {
-                try {
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            emailId,
-                            ...emailData,
-                            to: [recipient],
-                            isIndividual: true,
-                        }),
-                    });
-                    const result = await response.json();
-                    results.push({ recipient, success: response.ok, result });
-                } catch (error) {
-                    results.push({ recipient, success: false, error: error.message });
-                }
-            }
-
-            const successful = results.filter(r => r.success);
-            const failed = results.filter(r => !r.success);
-
-            await updateEmailStatus(
-                emailId,
-                successful.length > 0 ? 'sent' : 'failed',
-                failed.length > 0 ? `${failed.length} recipients failed` : null
-            );
-
-            return { results, successful: successful.length, failed: failed.length };
-        }
-
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                emailId,
-                ...emailData,
-                isIndividual: false,
-            }),
+            attachmentFiles,
+            isIndividual: individually,
         });
 
-        if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Failed to send emails');
-        }
-
-        const result = await response.json();
-        await updateEmailStatus(emailId, 'sent', null);
+        await updateEmailStatus(
+            emailId,
+            result.sent > 0 ? 'sent' : 'failed',
+            result.failed > 0 ? `${result.failed} recipients failed` : null
+        );
         return result;
     } catch (error) {
         console.error('Error sending emails:', error);
@@ -399,7 +292,7 @@ export async function processBirthdayEmails() {
                     html: activeTemplate.html?.replace(/{name}/g, name),
                 };
 
-                const emailData = {
+                const result = await createEmailSend({
                     recipients: [person.email],
                     content: personalizedContent,
                     type: 'birthday',
@@ -409,9 +302,7 @@ export async function processBirthdayEmails() {
                     sendIndividually: false,
                     useHTML: true,
                     recipientInfo: person,
-                };
-
-                const result = await createEmailSend(emailData);
+                });
                 await sendEmails([person.email], personalizedContent, result.id, 'birthday', false);
                 sentCount++;
                 console.log(`✅ Sent birthday email to ${name} (${person.email})`);
@@ -439,15 +330,12 @@ export async function processScheduledEmails() {
         const now = new Date();
         console.log(`Checking scheduled emails at ${now.toISOString()}`);
 
-        // Get all due scheduled emails
         const scheduledEmails = await getScheduledEmails(now);
-        console.log(`Found ${scheduledEmails.length} scheduled emails due`);
 
         let processed = 0;
         for (const email of scheduledEmails) {
             try {
                 console.log(`Sending: ${email.content?.subject} (${email.recipients?.length || 0} recipients)`);
-
                 await sendEmails(
                     email.recipients,
                     email.content,

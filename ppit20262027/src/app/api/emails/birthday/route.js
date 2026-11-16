@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
 import { processBirthdayEmails, getBirthdayRecipients } from '@/services/email';
+import { adminOnly } from '@/lib/email/admin';
 
-// GET: Check today's birthdays
+export const maxDuration = 300;
+
+// GET: Check today's birthdays (website admins only)
 export async function GET(request) {
+  const denied = await adminOnly(request);
+  if (denied) return denied;
+
   try {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
@@ -34,8 +40,11 @@ export async function GET(request) {
   }
 }
 
-// POST: Process birthday emails
+// POST: Process birthday emails (website admins only; the daily cron uses /api/cron/process-birthdays)
 export async function POST(request) {
+  const denied = await adminOnly(request);
+  if (denied) return denied;
+
   try {
     const result = await processBirthdayEmails();
     return NextResponse.json({

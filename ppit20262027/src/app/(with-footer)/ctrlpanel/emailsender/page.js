@@ -1,5 +1,7 @@
 'use client';
 
+import { adminFetch } from '@/services/adminApi';
+
 import { useState, useEffect } from 'react';
 import EmailForm from '@/components/emailsender/EmailForm';
 import EmailList from '@/components/emailsender/EmailList';
@@ -15,7 +17,7 @@ export default function EmailSenderPage() {
   const fetchEmails = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/emails');
+      const response = await adminFetch('/api/emails');
       const data = await response.json();
       setEmails(data.emails || []);
     } catch (error) {

@@ -2,21 +2,30 @@ import { NextResponse } from 'next/server';
 import {
     getEmailSends,
     getAllRecipients,
+    getBirthdayRecipients,
     getBirthdayTemplates,
+    saveBirthdayTemplate,
     createEmailSend,
     sendEmails,
-    updateEmailStatus,
     getEmailWrapper
 } from '../../../services/email';
+import { adminOnly } from '@/lib/email/admin';
+
+// Sending to many people individually waits 3 seconds between emails.
+export const maxDuration = 300;
 
 // ============================================================
-// GET /api/emails
+// GET /api/emails  (website admins only)
 // Query params:
 //   - type=recipients&cohort=2026  → Get recipients (optionally filtered by cohort)
+//   - type=birthday-recipients    → Get today's birthdays
 //   - type=birthday-templates     → Get birthday templates
-//   - lastDoc=xxx&limit=10        → Paginated email sends
+//   - lastDoc=<id>&limit=10        → Paginated email sends
 // ============================================================
 export async function GET(request) {
+    const denied = await adminOnly(request);
+    if (denied) return denied;
+
     try {
         const { searchParams } = new URL(request.url);
         const type = searchParams.get('type');
@@ -24,31 +33,23 @@ export async function GET(request) {
         const cohort = searchParams.get('cohort');
         const limit = parseInt(searchParams.get('limit') || '10');
 
-        // Get recipients (with optional cohort filter)
         if (type === 'recipients') {
             const recipients = await getAllRecipients(cohort);
-            return NextResponse.json({
-                success: true,
-                recipients
-            });
+            return NextResponse.json({ success: true, recipients });
         }
 
-        // Get birthday templates
+        if (type === 'birthday-recipients') {
+            const recipients = await getBirthdayRecipients();
+            return NextResponse.json({ success: true, recipients });
+        }
+
         if (type === 'birthday-templates') {
             const templates = await getBirthdayTemplates();
-            return NextResponse.json({
-                success: true,
-                templates
-            });
+            return NextResponse.json({ success: true, templates });
         }
 
-        // Default: Get paginated email sends
         const result = await getEmailSends(lastDoc, limit);
-        return NextResponse.json({
-            success: true,
-            ...result
-        });
-
+        return NextResponse.json({ success: true, ...result });
     } catch (error) {
         console.error('GET /api/emails error:', error);
         return NextResponse.json(
@@ -59,19 +60,28 @@ export async function GET(request) {
 }
 
 // ============================================================
-// POST /api/emails
-// Body:
+// POST /api/emails  (website admins only)
+// Body, to send or schedule an email:
 //   - recipients: string[]
 //   - content: { subject, text, html, attachments }
 //   - scheduledTime: string | null
 //   - sendNow: boolean
 //   - sendIndividually: boolean
 //   - attachmentFiles: { name, cloudinaryUrl, type }[] (already uploaded)
+// Or, to save a birthday template: { type: 'template', templateData }
 // ============================================================
 export async function POST(request) {
+    const denied = await adminOnly(request);
+    if (denied) return denied;
+
     try {
-        const origin = "https://ppitshenzhen.org";
         const body = await request.json();
+
+        if (body.type === 'template') {
+            const data = await saveBirthdayTemplate(body.templateData || {});
+            return NextResponse.json({ success: true, data, message: 'Template saved successfully' });
+        }
+
         const {
             recipients,
             content,
@@ -81,7 +91,6 @@ export async function POST(request) {
             attachmentFiles = [],
         } = body;
 
-        // Validate
         if (!recipients || recipients.length === 0) {
             return NextResponse.json(
                 { success: false, error: 'At least one recipient is required' },
@@ -109,34 +118,22 @@ export async function POST(request) {
             subject: content.subject || 'Broadcast Email',
             text: content.text,
             html: getEmailWrapper(content.html || content.text || ''),
-            attachments: attachments, // Cloudinary URLs for storage
+            attachments,
         };
 
-        const emailData = {
+        const result = await createEmailSend({
             recipients,
             content: emailContent,
             scheduledTime: scheduledTime || null,
             status: 'pending',
             sendNow: sendNow || false,
-            sendIndividually: sendIndividually,
+            sendIndividually,
             type: 'broadcast',
-            attachmentFiles: attachments, // Store attachment metadata
-        };
+            attachmentFiles: attachments,
+        });
 
-        const result = await createEmailSend(emailData);
-
-        // If send now, trigger immediate sending
         if (sendNow) {
-            // Pass attachmentFiles to sendEmails for nodemailer
-            await sendEmails(
-                recipients,
-                emailContent,
-                result.id,
-                'broadcast',
-                sendIndividually,
-                attachments,
-                origin
-            );
+            await sendEmails(recipients, emailContent, result.id, 'broadcast', sendIndividually, attachments);
         }
 
         const message = sendNow
@@ -151,9 +148,8 @@ export async function POST(request) {
             success: true,
             data: result,
             message,
-            attachments: attachments, // Return attachment info
+            attachments,
         });
-
     } catch (error) {
         console.error('POST /api/emails error:', error);
         return NextResponse.json(
