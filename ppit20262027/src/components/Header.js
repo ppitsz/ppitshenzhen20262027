@@ -176,7 +176,7 @@ const Header = () => {
 					Home
 				</Link>
 
-				<Link
+				{/* <Link
 					href="/news"
 					className={`md:text-2xl text-xl hover:text-[#8C0000] font-montserrat font-semibold ${
 						isScrolled && !menuOpen
@@ -190,7 +190,7 @@ const Header = () => {
 					}}
 				>
 					News & Events
-				</Link>
+				</Link> */}
 
 				<Link
 					href="/committee"
