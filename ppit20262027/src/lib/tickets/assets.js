@@ -11,6 +11,7 @@ export function eventFromForm(form) {
     date: t.date || "",
     time: t.time || "",
     venue: t.venue || "",
+    message: t.message || "",
     notes: t.notes || "",
     coverImage: form.coverImage || "",
   };

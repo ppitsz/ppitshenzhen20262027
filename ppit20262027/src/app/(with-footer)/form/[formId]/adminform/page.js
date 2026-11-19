@@ -16,7 +16,7 @@ import { PAGE, SUBMIT, splitPages } from "../../../../../lib/forms/pages";
 const generateClientId = () =>
   `q-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
-const EMPTY_TICKET = { enabled: false, eventName: "", date: "", time: "", venue: "", notes: "" };
+const EMPTY_TICKET = { enabled: false, eventName: "", date: "", time: "", venue: "", message: "", notes: "" };
 
 export default function FormAdminBuilder() {
   const router = useRouter();
@@ -52,7 +52,9 @@ export default function FormAdminBuilder() {
   const [coverFile, setCoverFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [descriptionText, setDescriptionText] = useState("");
+  const [ticketMessageText, setTicketMessageText] = useState("");
   const [showPreview, setShowPreview] = useState(false);
+  const [showTicketMessagePreview, setShowTicketMessagePreview] = useState(false);
   const [dragIndex, setDragIndex] = useState(null);
   // Insertion point (0..questions.length) the dragged card would land at
   const [dropIndex, setDropIndex] = useState(null);
@@ -62,7 +64,9 @@ export default function FormAdminBuilder() {
       const draft = localStorage.getItem("newFormDraft");
 
       if (draft) {
-        setForm((prev) => ({ ...prev, ...JSON.parse(draft) }));
+        const parsed = JSON.parse(draft);
+        setForm((prev) => ({ ...prev, ...parsed }));
+        setTicketMessageText(parsed.ticket?.message || "");
         localStorage.removeItem("newFormDraft");
       }
 
@@ -99,6 +103,16 @@ export default function FormAdminBuilder() {
         // Remove any remaining HTML tags
         cleanDescription = cleanDescription.replace(/<[^>]*>/g, '');
 
+        let cleanTicketMessage = data.ticket?.message || "";
+        cleanTicketMessage = cleanTicketMessage.replace(/&nbsp;/g, ' ');
+        cleanTicketMessage = cleanTicketMessage.replace(/<b>(.*?)<\/b>/g, '**$1**');
+        cleanTicketMessage = cleanTicketMessage.replace(/<strong>(.*?)<\/strong>/g, '**$1**');
+        cleanTicketMessage = cleanTicketMessage.replace(/<i>(.*?)<\/i>/g, '*$1*');
+        cleanTicketMessage = cleanTicketMessage.replace(/<em>(.*?)<\/em>/g, '*$1*');
+        cleanTicketMessage = cleanTicketMessage.replace(/<u>(.*?)<\/u>/g, '__$1__');
+        cleanTicketMessage = cleanTicketMessage.replace(/<br\s*\/?>/g, '\n');
+        cleanTicketMessage = cleanTicketMessage.replace(/<[^>]*>/g, '');
+
         setForm({
           id: formId,
           title: data.title || "Untitled Form",
@@ -108,7 +122,7 @@ export default function FormAdminBuilder() {
           isActive: data.isActive !== undefined ? data.isActive : false,
           isClosed: data.isClosed !== undefined ? data.isClosed : true,
           allowMultiSub: data.allowMultiSub === true,
-          ticket: { ...EMPTY_TICKET, ...(data.ticket || {}) },
+          ticket: { ...EMPTY_TICKET, ...(data.ticket || {}), message: cleanTicketMessage },
           questions: data.questions?.map((q) => ({
             id: q.id || generateClientId(),
             type: q.type,
@@ -124,6 +138,7 @@ export default function FormAdminBuilder() {
 
         // Set description text
         setDescriptionText(cleanDescription);
+        setTicketMessageText(cleanTicketMessage);
 
       } catch (error) {
         console.error(error);
@@ -531,6 +546,7 @@ export default function FormAdminBuilder() {
           ],
         });
         setDescriptionText("");
+        setTicketMessageText("");
         alert("Blank form reset.");
       }
 
@@ -641,6 +657,36 @@ export default function FormAdminBuilder() {
       .replace(/\*(.*?)\*/g, '<i>$1</i>')
       .replace(/__(.*?)__/g, '<u>$1</u>')
       .replace(/\n/g, '<br>');
+  };
+
+  const applyTicketMessageFormat = (marker, placeholder) => {
+    const textarea = document.getElementById('ticket-message-textarea');
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = ticketMessageText;
+    const wrap = marker.length;
+
+    if (start === end) {
+      const newText = text.substring(0, start) + marker + placeholder + marker + text.substring(start);
+      setTicketMessageText(newText);
+      updateTicket("message", newText);
+      setTimeout(() => {
+        textarea.selectionStart = start + wrap;
+        textarea.selectionEnd = start + wrap + placeholder.length;
+        textarea.focus();
+      }, 0);
+    } else {
+      const selectedText = text.substring(start, end);
+      const newText = text.substring(0, start) + marker + selectedText + marker + text.substring(end);
+      setTicketMessageText(newText);
+      updateTicket("message", newText);
+      setTimeout(() => {
+        textarea.selectionStart = start + wrap;
+        textarea.selectionEnd = end + wrap;
+        textarea.focus();
+      }, 0);
+    }
   };
 
   // Show loading state while checking auth
@@ -1074,9 +1120,8 @@ export default function FormAdminBuilder() {
                   ["venue", "Venue", "Venue name and address"],
                   ["date", "Date", "Sat, 15 Nov 2026"],
                   ["time", "Time", "14:00 - 17:00"],
-                  ["notes", "Extra note on ticket (optional)", "e.g. Bring your student ID"],
                 ].map(([key, label, placeholder]) => (
-                  <div key={key} className={key === "notes" ? "sm:col-span-2" : ""}>
+                  <div key={key}>
                     <label className="block text-sm text-gray-500 mb-2">{label}</label>
                     <input
                       type="text"
@@ -1087,6 +1132,89 @@ export default function FormAdminBuilder() {
                     />
                   </div>
                 ))}
+
+                <div className="sm:col-span-2">
+                  <label className="block text-sm text-gray-500 mb-2">Message before ticket (optional)</label>
+                  <div className="flex items-center gap-2 mb-2">
+                    <button
+                      onClick={() => applyTicketMessageFormat('**', 'bold')}
+                      className="px-3 py-1 text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                      title="Bold (**text**)"
+                    >
+                      <b>B</b>
+                    </button>
+                    <button
+                      onClick={() => applyTicketMessageFormat('*', 'italic')}
+                      className="px-3 py-1 text-sm italic text-gray-600 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                      title="Italic (*text*)"
+                    >
+                      <i>I</i>
+                    </button>
+                    <button
+                      onClick={() => applyTicketMessageFormat('__', 'underline')}
+                      className="px-3 py-1 text-sm underline text-gray-600 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                      title="Underline (__text__)"
+                    >
+                      <u>U</u>
+                    </button>
+                    <span className="text-xs text-gray-400 ml-2">
+                      Use **bold**, *italic*, __underline__
+                    </span>
+                  </div>
+                  <textarea
+                    id="ticket-message-textarea"
+                    value={ticketMessageText}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setTicketMessageText(value);
+                      updateTicket("message", value);
+                    }}
+                    placeholder="Message shown before the ticket (optional) - use **bold**, *italic*, __underline__"
+                    className="w-full text-gray-500 outline-none min-h-[100px] px-2 py-1 border-b-2 border-transparent focus:border-[#7E0C0E] transition-all duration-200 resize-y"
+                    rows={4}
+                  />
+                  <div className="mt-2">
+                    <button
+                      onClick={() => setShowTicketMessagePreview(!showTicketMessagePreview)}
+                      className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                    >
+                      {showTicketMessagePreview ? (
+                        <>
+                          <EyeOffIcon size={16} />
+                          Hide Preview
+                        </>
+                      ) : (
+                        <>
+                          <EyeIcon size={16} />
+                          Show Preview
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {showTicketMessagePreview && ticketMessageText && (
+                    <div className="mt-2 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                      <p className="text-sm text-gray-500 mb-1">Preview:</p>
+                      <div
+                        className="text-gray-700"
+                        dangerouslySetInnerHTML={{
+                          __html: formatDescriptionText(ticketMessageText)
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-sm text-gray-500 mb-2">Extra note on ticket (optional)</label>
+                  <input
+                    type="text"
+                    value={form.ticket.notes || ""}
+                    onChange={(e) => updateTicket("notes", e.target.value)}
+                    placeholder="e.g. Bring your student ID"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#7E0C0E] focus:border-transparent"
+                  />
+                </div>
+
                 <p className="sm:col-span-2 text-xs text-gray-400">
                   The form&apos;s Cover Image (below) is shown on the ticket. Use Latin letters only in these fields (the PDF font can&apos;t show Chinese characters). A question labelled &quot;Name&quot; or &quot;Nama&quot; is used as the name on the ticket.
                 </p>
