@@ -7,6 +7,15 @@ const FONT = "-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 const escapeHtml = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
+const formatMarkdown = (text) => {
+  if (!text) return "";
+  return escapeHtml(text)
+    .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+    .replace(/\*(.*?)\*/g, '<i>$1</i>')
+    .replace(/__(.*?)__/g, '<u>$1</u>')
+    .replace(/\n/g, '<br>');
+};
+
 const gmailAuth = () => ({ user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD });
 
 let transporter;
@@ -42,6 +51,8 @@ function ticketHtml({ ticket, event }) {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${RED};font-family:${FONT}">
   <tr><td align="center" style="padding:28px 12px">
     <p style="margin:0 0 16px;color:#fff;font-size:15px;max-width:360px">Hi ${escapeHtml(ticket.name)}, you're registered! Here's your ticket.</p>
+
+    ${event.message ? `<div style="margin:0 0 16px;color:#fff;font-size:14px;max-width:360px;line-height:1.5;text-align:left;">${formatMarkdown(event.message)}</div>` : ""}
 
     <table role="presentation" width="360" cellpadding="0" cellspacing="0" style="width:360px;max-width:100%;background:#fff;border-radius:14px">
       <tr><td style="padding:24px 24px 8px">
@@ -90,6 +101,7 @@ export async function sendTicketEmail({ to, ticket, event, qrPng, pdf, transport
   const text = `Hi ${ticket.name},
 
 You're registered for ${event.eventName}.
+${event.message ? `\n${event.message.replace(/\*\*|__|\*/g, "")}\n` : ""}
 ${event.date ? `Date: ${event.date}\n` : ""}${event.time ? `Time: ${event.time}\n` : ""}${event.venue ? `Venue: ${event.venue}\n` : ""}
 Ticket code: ${ticket.code}
 Show the QR in the attached PDF at the entrance. Valid for one entry only.`;
