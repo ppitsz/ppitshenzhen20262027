@@ -1,5 +1,7 @@
 'use client';
 
+import { adminFetch } from '@/services/adminApi';
+
 import { useState } from 'react';
 import RecipientSelector from './RecipientSelector';
 import ContentEditor from './ContentEditor';
@@ -84,7 +86,7 @@ export default function EmailForm({ onSuccess }) {
             }
 
             // Send the email
-            const response = await fetch('/api/emails', {
+            const response = await adminFetch('/api/emails', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

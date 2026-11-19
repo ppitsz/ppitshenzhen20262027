@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { updateUserStatus } from '../../../../services/forms';
+import { updateUserStatus } from '@/lib/members/server';
 
 export async function GET(request) {
     try {

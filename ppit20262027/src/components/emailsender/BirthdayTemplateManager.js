@@ -1,5 +1,7 @@
 'use client';
 
+import { adminFetch } from '@/services/adminApi';
+
 import { useState, useEffect } from 'react';
 
 export default function BirthdayTemplateManager() {
@@ -20,7 +22,7 @@ export default function BirthdayTemplateManager() {
 
   const fetchTemplates = async () => {
     try {
-      const response = await fetch('/api/emails?type=birthday-templates');
+      const response = await adminFetch('/api/emails?type=birthday-templates');
       const data = await response.json();
       setTemplates(data.templates || []);
     } catch (error) {
@@ -33,7 +35,7 @@ export default function BirthdayTemplateManager() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('/api/emails', {
+      const response = await adminFetch('/api/emails', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -64,7 +66,7 @@ export default function BirthdayTemplateManager() {
     if (!confirm('Delete this template?')) return;
     try {
       // Implement delete API call
-      await fetch(`/api/emails/${id}`, { method: 'DELETE' });
+      await adminFetch(`/api/emails/${id}`, { method: 'DELETE' });
       await fetchTemplates();
     } catch (error) {
       console.error('Error deleting template:', error);

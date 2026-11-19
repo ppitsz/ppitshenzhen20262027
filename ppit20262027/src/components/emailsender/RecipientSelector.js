@@ -1,5 +1,7 @@
 'use client';
 
+import { adminFetch } from '@/services/adminApi';
+
 import { useState, useEffect } from 'react';
 
 export default function RecipientSelector({ selectedRecipients, onRecipientsChange, type = 'broadcast' }) {
@@ -20,7 +22,7 @@ export default function RecipientSelector({ selectedRecipients, onRecipientsChan
             const endpoint = type === 'birthday'
                 ? '/api/emails?type=birthday-recipients'
                 : '/api/emails?type=recipients';
-            const response = await fetch(endpoint);
+            const response = await adminFetch(endpoint);
             const data = await response.json();
 
             const users = data.recipients || [];

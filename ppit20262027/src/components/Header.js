@@ -2,7 +2,8 @@
 import React, { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { auth } from "../lib/firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
+import { signOutEverywhere } from "../services/auth";
 import { useRouter } from "next/navigation";
 
 const Header = () => {
@@ -18,7 +19,7 @@ const Header = () => {
 	const router = useRouter();
 
 	async function handleMobileLogout() {
-  		await signOut(auth);
+  		await signOutEverywhere();
   		setShowLogoutPopup(false);
   		router.push("/login");
 	}
@@ -381,7 +382,7 @@ const Header = () => {
 							if (user) {
 								setLoggingOut(true);
 								setSessionOpen(false);
-								await signOut(auth);
+								await signOutEverywhere();
 								router.replace("/");
 								setLoggingOut(false);
 							} else {
