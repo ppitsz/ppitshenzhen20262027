@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Search, Clock, Newspaper, X } from "lucide-react";
-import Heronews from "../../../../public/News/temporary2.png";
+import Heronews from "../../../../public/DefaultFormCardBackground.webp";
 import { subscribePublishedNews, formatNewsDate, readingTime, isShownOnNewsPage, htmlToText } from "@/services/news";
 
 const PAGE_SIZE = 9;
@@ -193,7 +193,7 @@ export default function NewsPage() {
                     <Image
                         src={Heronews}
                         alt="News & Events Hero"
-                        className="w-full h-full object-cover absolute inset-0 brightness-10"
+                        className="w-full h-full object-cover absolute inset-0 brightness-75"
                         priority
                         quality={90}
                     />
