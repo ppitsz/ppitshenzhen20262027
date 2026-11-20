@@ -10,7 +10,7 @@ import sweatercewe from "../../../public/Home/sweatercewe.webp";
 import sweatercowo from "../../../public/Home/sweatercowo.webp";
 import GuidebookImage from "../../../public/Home/fotoguidebook.webp";
 import Link from "next/link";
-import { subscribePublishedNews, formatNewsDate, isShownOnHomepage } from "@/services/news";
+import { subscribePublishedNews, formatNewsDate, isShownOnHomepage, newsCover } from "@/services/news";
 
 export default function Home() {
     const universities = [
@@ -64,7 +64,7 @@ export default function Home() {
                         date: formatNewsDate(a.publishDate),
                         description: a.summary,
                         link: `/news/${a.slug}`,
-                        image: a.coverImage,
+                        image: newsCover(a),
                     }))
                 );
                 setNewsLoading(false);
@@ -480,14 +480,12 @@ export default function Home() {
                                             >
                                                 {/* News Card Image Header */}
                                                 <div className="relative h-48 w-full overflow-hidden bg-black/30">
-                                                    {news.image && (
-                                                        // eslint-disable-next-line @next/next/no-img-element
-                                                        <img
-                                                            src={news.image}
-                                                            alt={news.title}
-                                                            className="w-full h-full object-cover opacity-90 transition-transform duration-500 hover:scale-105"
-                                                        />
-                                                    )}
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img
+                                                        src={news.image}
+                                                        alt={news.title}
+                                                        className="w-full h-full object-cover opacity-90 transition-transform duration-500 hover:scale-105"
+                                                    />
                                                     <div className="absolute top-3 left-3 bg-red-700/90 text-white text-xs px-3 py-1 rounded-full font-medium tracking-wider backdrop-blur-md">
                                                         {news.date}
                                                     </div>

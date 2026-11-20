@@ -70,6 +70,13 @@ export function toDate(value) {
     return isNaN(d.getTime()) ? null : d;
 }
 
+// shown wherever an article has no cover image
+export const DEFAULT_NEWS_COVER = "/News/NewsDefaultBackground.png";
+
+export function newsCover(article) {
+    return article?.coverImage || DEFAULT_NEWS_COVER;
+}
+
 export function formatNewsDate(value) {
     const d = toDate(value);
     if (!d) return "";

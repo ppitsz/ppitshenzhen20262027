@@ -303,6 +303,7 @@ export default function RichArticleEditor({ initialValue = "", onChange, placeho
     const [stats, setStats] = useState({ words: 0, chars: 0 });
     const [isEmpty, setIsEmpty] = useState(true);
     const [imageEditor, setImageEditor] = useState(null); // { img, originalSrc, edits, style }
+    const [mediaBox, setMediaBox] = useState(null); // position of the resize frame around the selected media
     const [activeCell, setActiveCell] = useState(null);
     const [tableWidth, setTableWidth] = useState(100);
     const [dragInfo, setDragInfo] = useState(null); // live size label while resizing a table
@@ -331,7 +332,7 @@ export default function RichArticleEditor({ initialValue = "", onChange, placeho
         if (!el) return;
         // strip transient selection styling before emitting
         const clone = el.cloneNode(true);
-        clone.querySelectorAll("img[data-selected]").forEach((img) => img.removeAttribute("data-selected"));
+        clone.querySelectorAll("[data-selected]").forEach((m) => m.removeAttribute("data-selected"));
         clone.querySelectorAll("[data-active-cell]").forEach((c) => c.removeAttribute("data-active-cell"));
         onChange?.(clone.innerHTML);
         refreshStats();
@@ -570,9 +571,9 @@ export default function RichArticleEditor({ initialValue = "", onChange, placeho
         exec("formatBlock", "P");
     };
 
-    // --- image selection & settings ---
+    // --- media (image / embed) selection & settings ---
     const selectImage = (img) => {
-        editorRef.current?.querySelectorAll("img[data-selected]").forEach((i) => i.removeAttribute("data-selected"));
+        editorRef.current?.querySelectorAll("[data-selected]").forEach((i) => i.removeAttribute("data-selected"));
         if (!img) {
             setSelectedImg(null);
             return;
@@ -593,14 +594,89 @@ export default function RichArticleEditor({ initialValue = "", onChange, placeho
         selectedImg.style.width = `${next.width}%`;
         selectedImg.style.height = "auto";
         selectedImg.setAttribute("data-align", next.align);
-        selectedImg.setAttribute("alt", next.alt);
+        if (selectedImg.tagName === "IMG") selectedImg.setAttribute("alt", next.alt);
         emit();
+        requestAnimationFrame(updateMediaBox);
     };
 
     const removeImage = () => {
         selectedImg?.remove();
         setSelectedImg(null);
+        setMediaBox(null);
         emit();
+    };
+
+    const isEmbed = selectedImg?.tagName === "IFRAME";
+
+    // --- resize frame that follows the selected media ---
+    const updateMediaBox = useCallback(() => {
+        const el = selectedImg;
+        const host = editorRef.current?.parentElement;
+        if (!el || !host || !editorRef.current.contains(el)) {
+            setMediaBox(null);
+            return;
+        }
+        const hr = host.getBoundingClientRect();
+        const er = el.getBoundingClientRect();
+        setMediaBox({ left: er.left - hr.left, top: er.top - hr.top, width: er.width, height: er.height });
+    }, [selectedImg]);
+
+    useEffect(() => {
+        if (!selectedImg || sourceMode) {
+            setMediaBox(null);
+            return;
+        }
+        updateMediaBox();
+        const ro = new ResizeObserver(() => updateMediaBox());
+        ro.observe(selectedImg);
+        ro.observe(editorRef.current);
+        const editor = editorRef.current;
+        window.addEventListener("resize", updateMediaBox);
+        editor.addEventListener("input", updateMediaBox);
+        return () => {
+            ro.disconnect();
+            window.removeEventListener("resize", updateMediaBox);
+            editor.removeEventListener("input", updateMediaBox);
+        };
+    }, [selectedImg, sourceMode, fullscreen, updateMediaBox]);
+
+    // drag a handle to scale the media in real time (keeps its proportions)
+    const startMediaResize = (e, side) => {
+        const el = selectedImg;
+        if (!el) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const parent = el.parentElement;
+        const cs = getComputedStyle(parent);
+        const parentW = parent.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) || 1;
+        const startPx = el.getBoundingClientRect().width;
+        const startX = e.clientX;
+        const align = el.getAttribute("data-align") || "center";
+        const factor = align === "center" ? 2 : 1; // centered media grows on both sides
+        const sign = side.includes("w") ? -1 : 1;
+        document.body.style.cursor = side === "e" || side === "w" ? "ew-resize" : side === "ne" || side === "sw" ? "nesw-resize" : "nwse-resize";
+        document.body.style.userSelect = "none";
+
+        const onMove = (ev) => {
+            const px = startPx + sign * (ev.clientX - startX) * factor;
+            const pct = Math.round(Math.min(100, Math.max(5, (px / parentW) * 100)));
+            el.style.width = `${pct}%`;
+            if (el.tagName === "IMG") el.style.height = "auto";
+            setImgSettings((st) => ({ ...st, width: pct }));
+            setDragInfo({ x: ev.clientX, y: ev.clientY, text: `${pct}% wide` });
+            updateMediaBox();
+        };
+        const onUp = () => {
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            document.body.style.cursor = "";
+            document.body.style.userSelect = "";
+            setDragInfo(null);
+            updateMediaBox();
+            emit();
+        };
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
     };
 
     // --- full image editor (crop / filters / style) ---
@@ -838,9 +914,17 @@ export default function RichArticleEditor({ initialValue = "", onChange, placeho
         window.addEventListener("mouseup", onUp);
     };
 
+    const embedAtPoint = (x, y) =>
+        [...(editorRef.current?.querySelectorAll("iframe") || [])].find((f) => {
+            const r = f.getBoundingClientRect();
+            return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+        });
+
     const handleEditorClick = (e) => {
-        if (e.target.tagName === "IMG") selectImage(e.target);
-        else if (selectedImg) selectImage(null);
+        if (e.target.tagName === "IMG") return selectImage(e.target);
+        const embed = embedAtPoint(e.clientX, e.clientY);
+        if (embed) return selectImage(embed);
+        if (selectedImg) selectImage(null);
     };
 
     const handleEditorDoubleClick = (e) => {
@@ -918,12 +1002,10 @@ export default function RichArticleEditor({ initialValue = "", onChange, placeho
                 fullscreen ? "fixed inset-0 z-[60] rounded-none flex flex-col overflow-hidden" : "relative"
             }`}
         >
+            {/* sticky block: the main toolbar + image/table bars all follow you while scrolling */}
+            <div className={fullscreen ? "" : "sticky top-[78px] z-30 shadow-lg shadow-black/30"}>
             {/* ---------------- TOOLBAR ---------------- */}
-            <div
-                className={`flex flex-wrap items-center gap-1 p-2 border-b border-gray-700 bg-[#1e1e1e] rounded-t-xl ${
-                    fullscreen ? "" : "sticky top-[78px] z-30"
-                }`}
-            >
+            <div className="flex flex-wrap items-center gap-1 p-2 border-b border-gray-700 bg-[#1e1e1e] rounded-t-xl">
                 <select
                     title="Text style"
                     value={blockFormat}
@@ -1097,15 +1179,17 @@ export default function RichArticleEditor({ initialValue = "", onChange, placeho
 
             {/* ---------------- IMAGE SETTINGS BAR ---------------- */}
             {selectedImg && !sourceMode && (
-                <div className="flex flex-wrap items-center gap-4 px-3 py-2 bg-purple-950/40 border-b border-purple-800 text-sm text-gray-200">
-                    <span className="font-semibold text-purple-300">Image</span>
-                    <button
-                        type="button"
-                        onClick={() => openImageEditor()}
-                        className="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold px-3 py-1 rounded-md"
-                    >
-                        <Wand2 className="w-4 h-4" /> Edit image
-                    </button>
+                <div className="flex flex-wrap items-center gap-4 px-3 py-2 bg-[#2a1840] border-b border-purple-800 text-sm text-gray-200">
+                    <span className="font-semibold text-purple-300">{isEmbed ? "Video / embed" : "Image"}</span>
+                    {!isEmbed && (
+                        <button
+                            type="button"
+                            onClick={() => openImageEditor()}
+                            className="inline-flex items-center gap-1.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold px-3 py-1 rounded-md"
+                        >
+                            <Wand2 className="w-4 h-4" /> Edit image
+                        </button>
+                    )}
                     <label className="flex items-center gap-2">
                         Width
                         <input
@@ -1130,12 +1214,14 @@ export default function RichArticleEditor({ initialValue = "", onChange, placeho
                             </ToolButton>
                         ))}
                     </div>
-                    <input
-                        value={imgSettings.alt}
-                        onChange={(e) => updateImage({ alt: e.target.value })}
-                        placeholder="Alt text (for accessibility)"
-                        className="bg-[#2a2a2a] border border-gray-600 rounded-md px-2 py-1 text-sm flex-1 min-w-[160px]"
-                    />
+                    {!isEmbed && (
+                        <input
+                            value={imgSettings.alt}
+                            onChange={(e) => updateImage({ alt: e.target.value })}
+                            placeholder="Alt text (for accessibility)"
+                            className="bg-[#2a2a2a] border border-gray-600 rounded-md px-2 py-1 text-sm flex-1 min-w-[160px]"
+                        />
+                    )}
                     <button type="button" onClick={removeImage} className="flex items-center gap-1 text-red-400 hover:text-red-300">
                         <Trash2 className="w-4 h-4" /> Remove
                     </button>
@@ -1147,7 +1233,7 @@ export default function RichArticleEditor({ initialValue = "", onChange, placeho
 
             {/* ---------------- TABLE BAR ---------------- */}
             {activeTable && !selectedImg && !sourceMode && (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 bg-sky-950/40 border-b border-sky-800 text-sm text-gray-200">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 bg-[#0f2433] border-b border-sky-800 text-sm text-gray-200">
                     <span className="font-semibold text-sky-300">Table</span>
                     <div className="flex items-center gap-0.5">
                         <Rows3 className="w-4 h-4 text-gray-500 mr-1" />
@@ -1210,6 +1296,7 @@ export default function RichArticleEditor({ initialValue = "", onChange, placeho
                     </span>
                 </div>
             )}
+            </div>
 
             {/* ---------------- CANVAS ---------------- */}
             <div className={`relative bg-[#7E0C0E] ${fullscreen ? "flex-1 overflow-y-auto" : ""}`}>
@@ -1236,6 +1323,35 @@ export default function RichArticleEditor({ initialValue = "", onChange, placeho
                             sourceMode ? "hidden" : ""
                         }`}
                     />
+                    {mediaBox && selectedImg && !sourceMode && (
+                        <div
+                            className="absolute pointer-events-none z-20"
+                            style={{ left: mediaBox.left, top: mediaBox.top, width: mediaBox.width, height: mediaBox.height }}
+                        >
+                            <div className="absolute inset-0 border-2 border-purple-400 rounded-sm" />
+                            <span className="absolute -top-7 left-0 bg-purple-600 text-white text-[11px] font-semibold px-2 py-0.5 rounded">
+                                {imgSettings.width}%
+                            </span>
+                            {[
+                                ["nw", "left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize"],
+                                ["ne", "right-0 top-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize"],
+                                ["sw", "left-0 bottom-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize"],
+                                ["se", "right-0 bottom-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize"],
+                                ["w", "left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize h-7 w-2.5"],
+                                ["e", "right-0 top-1/2 translate-x-1/2 -translate-y-1/2 cursor-ew-resize h-7 w-2.5"],
+                            ].map(([side, cls]) => (
+                                <div
+                                    key={side}
+                                    onPointerDown={(e) => startMediaResize(e, side)}
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    title="Drag to resize"
+                                    className={`absolute pointer-events-auto bg-white border-2 border-purple-500 rounded-sm shadow touch-none ${
+                                        side.length === 2 ? "w-3.5 h-3.5" : ""
+                                    } ${cls}`}
+                                />
+                            ))}
+                        </div>
+                    )}
                     {isEmpty && !sourceMode && (
                         <div className="absolute top-6 md:top-10 left-6 md:left-10 text-white/40 pointer-events-none select-none font-montserrat">
                             {placeholder}
@@ -1258,7 +1374,7 @@ export default function RichArticleEditor({ initialValue = "", onChange, placeho
                     {stats.words} words · {stats.chars} characters · ~{Math.max(1, Math.round(stats.words / 200))} min read
                 </span>
                 <span className="hidden sm:inline">
-                    Tip: double-click an image to crop/edit it · drag table borders to resize · Ctrl+K for links
+                    Tip: click an image/video and drag its handles to resize · double-click an image to crop/edit · Ctrl+K for links
                 </span>
             </div>
 
@@ -1288,9 +1404,8 @@ export default function RichArticleEditor({ initialValue = "", onChange, placeho
                 .news-editor img {
                     cursor: pointer;
                 }
-                .news-editor img[data-selected] {
-                    outline: 3px solid #a855f7;
-                    outline-offset: 3px;
+                .news-editor [data-selected] {
+                    outline: 2px solid transparent;
                 }
                 .news-editor iframe {
                     pointer-events: none;
