@@ -74,6 +74,12 @@ export default function ControlPanelLayout({ children }) {
             path: "/ctrlpanel/tickets",
             active: pathname === "/ctrlpanel/tickets"
         },
+        {
+            name: "News & Events",
+            path: "/ctrlpanel/news-dashboard",
+            active: pathname === "/ctrlpanel/news-dashboard"
+        },
+
         // Add more nav items here as you create them
     ];
 

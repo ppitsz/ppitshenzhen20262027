@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Calendar, Clock, User, Share2, Check } from "lucide-react";
 import ArticleContent from "./ArticleContent";
-import { formatNewsDate, readingTime } from "@/services/news";
+import { formatNewsDate, readingTime, newsCover } from "@/services/news";
 
 /** Full article layout, shared by /news/[slug] and the dashboard preview. */
 export default function ArticleView({ article, preview = false, children }) {
@@ -71,12 +71,10 @@ export default function ArticleView({ article, preview = false, children }) {
                 </div>
             </header>
 
-            {article.coverImage && (
-                <div className="relative h-[260px] sm:h-[360px] md:h-[480px] w-full rounded-2xl overflow-hidden mb-12 shadow-2xl border border-white/15 bg-black/30">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={article.coverImage} alt={article.title} className="w-full h-full object-cover" />
-                </div>
-            )}
+            <div className="relative h-[260px] sm:h-[360px] md:h-[480px] w-full rounded-2xl overflow-hidden mb-12 shadow-2xl border border-white/15 bg-black/30">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={newsCover(article)} alt={article.title} className="w-full h-full object-cover" />
+            </div>
 
             <ArticleContent html={article.contentHtml} />
 
