@@ -4,20 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { Search, Clock, Newspaper, X } from "lucide-react";
 import Heronews from "../../../../public/DefaultFormCardBackground.webp";
-import { subscribePublishedNews, formatNewsDate, readingTime, isShownOnNewsPage, htmlToText } from "@/services/news";
+import { subscribePublishedNews, formatNewsDate, readingTime, isShownOnNewsPage, htmlToText, DEFAULT_NEWS_COVER } from "@/services/news";
 
 const PAGE_SIZE = 9;
 
 function CoverImage({ src, alt, className = "" }) {
-    if (!src) {
-        return (
-            <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br from-[#61090A] to-black/60 ${className}`}>
-                <Newspaper className="w-12 h-12 text-white/20" />
-            </div>
-        );
-    }
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt={alt} loading="lazy" className={`w-full h-full object-cover ${className}`} />;
+    return <img src={src || DEFAULT_NEWS_COVER} alt={alt} loading="lazy" className={`w-full h-full object-cover ${className}`} />;
 }
 
 // lowercase, no accents, no apostrophes, punctuation → spaces ("Do's & Don'ts" → "dos donts")

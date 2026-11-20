@@ -2,7 +2,7 @@
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import ArticleView from "@/components/news/ArticleView";
-import { subscribePublishedNews, formatNewsDate, isShownOnNewsPage } from "@/services/news";
+import { subscribePublishedNews, formatNewsDate, isShownOnNewsPage, newsCover } from "@/services/news";
 
 export default function ArticleDetailPage({ params }) {
     const { slug } = use(params);
@@ -71,15 +71,13 @@ export default function ArticleDetailPage({ params }) {
                                         className="bg-[#61090A] border border-white/15 rounded-xl overflow-hidden hover:border-amber-400/50 transition group"
                                     >
                                         <div className="h-36 bg-black/40 overflow-hidden">
-                                            {a.coverImage && (
-                                                // eslint-disable-next-line @next/next/no-img-element
-                                                <img
-                                                    src={a.coverImage}
-                                                    alt={a.title}
-                                                    loading="lazy"
-                                                    className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-500"
-                                                />
-                                            )}
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                                src={newsCover(a)}
+                                                alt={a.title}
+                                                loading="lazy"
+                                                className="w-full h-full object-cover opacity-90 group-hover:scale-105 transition-transform duration-500"
+                                            />
                                         </div>
                                         <div className="p-4">
                                             <span className="text-amber-400 text-xs font-semibold">{formatNewsDate(a.publishDate)}</span>
