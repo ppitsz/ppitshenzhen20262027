@@ -323,7 +323,14 @@ export default function TicketCheckInPage() {
             <input
               ref={inputRef}
               value={typedCode}
-              onChange={(e) => setTypedCode(e.target.value.toUpperCase())}
+              onChange={(e) => {
+                const tempTypedCode = e.target.value.toUpperCase()
+                if (typedCode.startsWith("PPITSZ")) {
+                  setTypedCode(typedCode.split(".")[1]);
+                } else {
+                  setTypedCode(tempTypedCode);
+                }
+              }}
               onKeyDown={(e) => {
                 // Hardware scanners end every scan with Enter — treat it as "Check in".
                 // Handled here rather than relying on implicit form submission so it
