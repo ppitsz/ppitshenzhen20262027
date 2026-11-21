@@ -165,15 +165,19 @@ export default function TicketCheckInPage() {
     [formId]
   );
 
-  const submitTypedCode = useCallback(() => {
-    const code = typedCode.trim();
-    if (!code) return;
-    // If a check-in is already in flight, leave the text in the box instead of
-    // silently swallowing the scan — it stays visible and can be re-sent.
-    if (busyRef.current) return;
-    setTypedCode(""); // clear first so the next scan starts on an empty field
-    submit({ code });
-  }, [typedCode, submit]);
+  const submitTypedCode = useCallback(
+    (raw) => {
+      let code = (raw ?? typedCode).trim();
+      if (!code || busyRef.current) return;
+
+      if (/^PPITSZ\./i.test(code)) code = code.split(".")[1]?.trim() ?? "";
+      if (!code) return;
+
+      setTypedCode("");
+      submit({ code });
+    },
+    [typedCode, submit]
+  );
 
   const stopCamera = () => {
     controlsRef.current?.stop();
@@ -323,21 +327,14 @@ export default function TicketCheckInPage() {
             <input
               ref={inputRef}
               value={typedCode}
-              onChange={(e) => {
-                const tempTypedCode = e.target.value.toUpperCase()
-                if (tempTypedCode.startsWith("PPITSZ")) {
-                  setTypedCode(tempTypedCode.split(".")[1]);
-                } else {
-                  setTypedCode(tempTypedCode);
-                }
-              }}
+              onChange={(e) => setTypedCode(e.target.value.toUpperCase())}
               onKeyDown={(e) => {
                 // Hardware scanners end every scan with Enter — treat it as "Check in".
                 // Handled here rather than relying on implicit form submission so it
                 // still works when the submit button is disabled.
                 if (e.key !== "Enter") return;
                 e.preventDefault(); // stop the form from also submitting
-                submitTypedCode();
+                submitTypedCode(e.currentTarget.value);
               }}
               placeholder="Or type ticket code"
               autoComplete="off"
