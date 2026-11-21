@@ -70,7 +70,7 @@ function beep(ok) {
     osc.connect(ctx.destination);
     osc.start();
     osc.stop(ctx.currentTime + (ok ? 0.12 : 0.4));
-  } catch {}
+  } catch { }
 }
 
 export default function TicketCheckInPage() {
@@ -92,6 +92,7 @@ export default function TicketCheckInPage() {
   const controlsRef = useRef(null);
   const lastScanRef = useRef({ text: "", at: 0 });
   const busyRef = useRef(false);
+  const inputRef = useRef(null);
 
   const loadForms = useCallback(async () => {
     try {
@@ -163,6 +164,16 @@ export default function TicketCheckInPage() {
     },
     [formId]
   );
+
+  const submitTypedCode = useCallback(() => {
+    const code = typedCode.trim();
+    if (!code) return;
+    // If a check-in is already in flight, leave the text in the box instead of
+    // silently swallowing the scan — it stays visible and can be re-sent.
+    if (busyRef.current) return;
+    setTypedCode(""); // clear first so the next scan starts on an empty field
+    submit({ code });
+  }, [typedCode, submit]);
 
   const stopCamera = () => {
     controlsRef.current?.stop();
@@ -305,15 +316,25 @@ export default function TicketCheckInPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (typedCode.trim()) submit({ code: typedCode });
-              setTypedCode("");
+              submitTypedCode();
             }}
             className="flex gap-2"
           >
             <input
+              ref={inputRef}
               value={typedCode}
               onChange={(e) => setTypedCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => {
+                // Hardware scanners end every scan with Enter — treat it as "Check in".
+                // Handled here rather than relying on implicit form submission so it
+                // still works when the submit button is disabled.
+                if (e.key !== "Enter") return;
+                e.preventDefault(); // stop the form from also submitting
+                submitTypedCode();
+              }}
               placeholder="Or type ticket code"
+              autoComplete="off"
+              autoFocus
               className="flex-1 min-w-0 bg-[#1e1e1e] border border-gray-700 rounded-lg px-3 py-2 font-mono tracking-widest uppercase"
             />
             <button type="submit" disabled={busy} className="px-4 py-2 bg-purple-600 rounded-lg hover:bg-purple-700 disabled:opacity-50">
