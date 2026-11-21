@@ -325,7 +325,7 @@ export default function TicketCheckInPage() {
               value={typedCode}
               onChange={(e) => {
                 const tempTypedCode = e.target.value.toUpperCase()
-                if (typedCode.startsWith("PPITSZ")) {
+                if (tempTypedCode.startsWith("PPITSZ")) {
                   setTypedCode(typedCode.split(".")[1]);
                 } else {
                   setTypedCode(tempTypedCode);
